@@ -156,3 +156,7 @@ Este laboratorio es una adaptación modernizada del ejercicio **SnakeRace** de A
 
 En el siguiente link esta el ropositorio modificado correspondiente al punto 1, en su readme se encuentra la docuemntacion del ejercicio
 https://github.com/ChristianAlfonsoRomeroMartinez/wait-notify-excercise
+
+## Parte 2
+
+1. Cada serpiente toma su hilo y es autonoma, porque la aleatoriedad es completamente independiente 
