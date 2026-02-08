@@ -158,4 +158,4 @@ En el siguiente link esta el ropositorio modificado correspondiente al punto 1, 
 https://github.com/ChristianAlfonsoRomeroMartinez/wait-notify-excercise
 
 ## Parte 2
-In reporte.md
+[Reporte de laboratirio](reporte.md)
