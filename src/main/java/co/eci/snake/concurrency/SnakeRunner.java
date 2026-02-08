@@ -1,10 +1,11 @@
 package co.eci.snake.concurrency;
 
+import java.util.concurrent.ThreadLocalRandom;
+
 import co.eci.snake.core.Board;
 import co.eci.snake.core.Direction;
+import co.eci.snake.core.GameState;
 import co.eci.snake.core.Snake;
-
-import java.util.concurrent.ThreadLocalRandom;
 
 public final class SnakeRunner implements Runnable {
   private final Snake snake;
@@ -13,15 +14,22 @@ public final class SnakeRunner implements Runnable {
   private final int turboSleepMs = 40;
   private int turboTicks = 0;
 
-  public SnakeRunner(Snake snake, Board board) {
+  //Nos da las senales de pausa
+  private final GameState gameState;
+
+  public SnakeRunner(Snake snake, Board board, GameState gameState) {
     this.snake = snake;
     this.board = board;
+    this.gameState = gameState;
   }
 
   @Override
   public void run() {
     try {
       while (!Thread.currentThread().isInterrupted()) {
+
+        //Senal de pausa
+        gameState.awaitIfPaused();
         maybeTurn();
         var res = board.step(snake);
         if (res == Board.MoveResult.HIT_OBSTACLE) {
