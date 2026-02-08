@@ -158,5 +158,4 @@ En el siguiente link esta el ropositorio modificado correspondiente al punto 1, 
 https://github.com/ChristianAlfonsoRomeroMartinez/wait-notify-excercise
 
 ## Parte 2
-
-1. Cada serpiente toma su hilo y es autonoma, porque la aleatoriedad es completamente independiente 
+In reporte.md
