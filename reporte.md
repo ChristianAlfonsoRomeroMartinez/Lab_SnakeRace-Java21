@@ -61,3 +61,60 @@ No habia una clara distincion de responsabilidades, y se le adjuntaban responsab
 
 - **Solucion**
 Agregue un registro para agregar addSnake y snakes() para asi saber exactamente las servientes y dibujarlas correctamente
+
+### Protege solo las regiones críticas estrictamente necesarias (evita bloqueos amplios).
+
+#### **Board.java**
+- **Riesgo**
+El arraylist no puede asegurar consistencia cuando muchos hilos lo usan al tiempo, ademas tenemos la particularidad que solo al inicio de la ejecucion se escribe
+
+- **Solucion**
+Usamos CopyOnWriteArrayList permite lecturas sin bloqueo, ademas crea una copia interna automatica lo que nos permite que los lectores nunca vean los datos de forma inconsistente, este cambio en bueno porque tenemos pocas escrituras y muchas lecturas
+
+- **Riesgo**
+1. Comer ela misma galleta simultáneamente 
+2. Agregar obstaculos al mismo tiempo
+3. Se puede leer el tablero mientras se mmodifica
+
+- **Solucion**
+Usamos Lock para los items, no uso synchronized porque puede generar bloqueos en los hilos, esto porque sincronizar todo el board generaria bloqueos en todas las serpientes
+
+- **Riesgo**
+La GUI llama varios metodos constantemente como mice() o obstacles(), cada 16ms, en caso de usar synchronized podemos tener bloqueos mortales
+
+- **Solucion**
+Usamos lock para copiar las colecciones para la region critica minima new HashSet<>(mice), por lo que el bloqueo se reduce en orden de mricosegundos a milisegundos
+
+- **Riesgo**
+Teniamos synchronized en el metodo step() como region crita, aca cuando se mueve una serpiente las otras deben esparar, lo que es supremamente inficiente
+
+- **Solucion**
+Solo bloqueamos las modificaciones a los items de mice, obstavles y turbo, y snake.advance() se ubica fuera del lock.
+Esto se materializa en que cuando las serpientes accedan a items mientras se actualiza su cuerpo
+
+- **Riesgo**
+addSnake() y snakes() usan sincronizacion
+- **Solucion**
+Gracias a la implementacion de CopyOnWriteArrayList podemos evitar el synchronized y a su vez evitamos bloqueos mortales
+
+
+#### **Snake.java**
+- **Riesgo**
+La estructura de datos ArrayDeque no es thread-safe con los objetos GamePanel, esta lee el body mientras SnakeRunner cada 40 o 80 milisegundos, por lo que en esencia ve una parte de la serpiente actiualizada y la otra en un estado anterior 
+
+- **Solucion**
+Uso ReadWriteLock, ya que permite la lectura simultanea por varios hilos, por lo que mientras la GUI lee, los hilos tambien lo hacen,
+Por otro lado solo bloquemaos al escribir con el metodo advance()
+
+- **Riesgo**
+En los cambios de direccion no son visibles inmediatamente, por lo que puede continuar en la direccion anterior por frames
+
+- **Solucion**
+Es necesario la incoorporacion de volatile en diretion nos garantiza que todos los hilos vean el cambio en una operacion atomica.
+
+- **Riesgo**
+La GUI puede ver el tablero mientras se modifica, por lo que puede tomar datos incosistentes 
+
+- **Solucion**
+WRITE lock bloquea todas las lecturas durante la modificación. 
+Región crítica: operaciones (addFirst, quitar, remover). Solo bloqueamos durante la modificación del Deque, NO durante el cálculo de newHead o la lógica de negocio.
