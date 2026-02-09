@@ -1,21 +1,23 @@
 package co.eci.snake.core;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ThreadLocalRandom;
 
 public final class Board {
   private final int width;
   private final int height;
 
-  // lista de serpientes para gestión central
+  // CopyOnWriteArrayList para serpientes
+  private final List<Snake> snakes = new CopyOnWriteArrayList<>();
 
-  private final List<Snake> snakes = new ArrayList<>();
+  // Lock separado solo para items. NO usar synchronized en todo Board
+  private final Object itemsLock = new Object();
 
   private final Set<Position> mice = new HashSet<>();
   private final Set<Position> obstacles = new HashSet<>();
@@ -48,49 +50,76 @@ public final class Board {
     return height;
   }
 
-  public synchronized Set<Position> mice() {
-    return new HashSet<>(mice);
+  //  Sincronización mínima en getters de UI
+
+  public Set<Position> mice() {
+    synchronized (itemsLock) {
+      return new HashSet<>(mice);
+    }
   }
 
-  public synchronized Set<Position> obstacles() {
-    return new HashSet<>(obstacles);
+  public Set<Position> obstacles() {
+    synchronized (itemsLock) {
+      return new HashSet<>(obstacles);
+    }
   }
 
-  public synchronized Set<Position> turbo() {
-    return new HashSet<>(turbo);
+  public Set<Position> turbo() {
+    synchronized (itemsLock) {
+      return new HashSet<>(turbo);
+    }
   }
 
-  public synchronized Map<Position, Position> teleports() {
-    return new HashMap<>(teleports);
+  public Map<Position, Position> teleports() {
+    synchronized (itemsLock) {
+      return new HashMap<>(teleports);
+    }
   }
 
-  public synchronized MoveResult step(Snake snake) {
+  // Región crítica MÍNIMA en step()
+
+  public MoveResult step(Snake snake) {
     Objects.requireNonNull(snake, "snake");
     var head = snake.head();
     var dir = snake.direction();
     Position next = new Position(head.x() + dir.dx, head.y() + dir.dy).wrap(width, height);
 
-    if (obstacles.contains(next))
-      return MoveResult.HIT_OBSTACLE;
-
+    // Variables para decisiones (calculadas dentro del lock)
+    boolean hitObstacle;
+    boolean ateMouse;
+    boolean ateTurbo;
     boolean teleported = false;
-    if (teleports.containsKey(next)) {
-      next = teleports.get(next);
-      teleported = true;
-    }
 
-    boolean ateMouse = mice.remove(next);
-    boolean ateTurbo = turbo.remove(next);
+    // REGIÓN CRÍTICA MÍNIMA: Solo proteger acceso a colecciones compartidas
+    synchronized (itemsLock) {
+      // Verificar obstáculo
+      hitObstacle = obstacles.contains(next);
+      if (hitObstacle)
+        return MoveResult.HIT_OBSTACLE;
 
+      // Verificar teleport
+      if (teleports.containsKey(next)) {
+        next = teleports.get(next);
+        teleported = true;
+      }
+
+      // Comer ratón (operación atómica: remove + add)
+      ateMouse = mice.remove(next);
+      ateTurbo = turbo.remove(next);
+
+      // Si comió ratón, agregar nuevo ratón y obstáculo
+      if (ateMouse) {
+        mice.add(randomEmpty());
+        obstacles.add(randomEmpty());
+        if (ThreadLocalRandom.current().nextDouble() < 0.2)
+          turbo.add(randomEmpty());
+      }
+    } // FIN REGIÓN CRÍTICA
+
+    // Movimiento de serpiente FUERA del lock
     snake.advance(next, ateMouse);
 
-    if (ateMouse) {
-      mice.add(randomEmpty());
-      obstacles.add(randomEmpty());
-      if (ThreadLocalRandom.current().nextDouble() < 0.2)
-        turbo.add(randomEmpty());
-    }
-
+    // Retornar resultado basado en lo que pasó
     if (ateTurbo)
       return MoveResult.ATE_TURBO;
     if (ateMouse)
@@ -122,15 +151,16 @@ public final class Board {
     return p;
   }
 
-  // Método para agregar serpientes al Board
-  public synchronized void addSnake(Snake snake) {
+  // Método addSnake sin sincronización
+
+  public void addSnake(Snake snake) {
     Objects.requireNonNull(snake, "snake cannot be null");
     snakes.add(snake);
   }
 
-  // Método para obtener lista de serpientes
+  // Método snakes() sin sincronización
 
-  public synchronized List<Snake> snakes() {
-    return new ArrayList<>(snakes);
+  public List<Snake> snakes() {
+    return List.copyOf(snakes); // Retorna vista inmutable adicional por seguridad
   }
 }
