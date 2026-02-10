@@ -134,3 +134,30 @@ Región crítica: operaciones (addFirst, quitar, remover). Solo bloqueamos duran
 
 ## 4) Robustez bajo carga
 
+- **Ejecucion con N alto (-Dsnakes=20 o mas)**: Se corrieron escenarios con 55 y 999 serpientes como se muestra en las capturas y  el juego se mantiene estable.
+
+- **Sin ConcurrentModificationException**: Las colecciones compartidas se acceden mediante `CopyOnWriteArrayList` y copias defensivas en getters de items.
+
+- **Sin lecturas inconsistentes**: El cuerpo de cada serpiente se protege con `ReadWriteLock`. La GUI lee mediante `snapshot()` y la logica de movimiento escribe con `advance()` bajo el write lock. Esto evita ver cuerpos a medias o posiciones corruptas.
+
+- **Sin deadlocks**: Los locks son granulares y no hay adquisiciones anidadas entre `pauseLock`, `itemsLock` y `bodyLock`. Las regiones criticas son cortas y se liberan de inmediato.
+
+- **Teleports y turbo sin carreras**: Los items se modifican bajo `itemsLock` y los resultados de movimiento se calculan fuera del lock. El turbo solo modifica el sleep del hilo y no requiere locks adicionales. 
+
+Capturas:
+
+![alt text](img/comand.png)
+
+![alt text](img/50run.png)
+
+![alt text](img/50paused.png)
+
+![alt text](img/999run.png)
+
+![alt text](img/999paused.png)
+
+![alt text](img/pausa.png)
+
+![alt text](img/analisis.png)
+
+Desde el desarrollo de la parte 1 se abordo desde un enfoque optimo, por lo que no se tuvo que hacer ninguna refactorizacion en este punto, solo ejecutar pruebas que son contundentes
