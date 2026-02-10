@@ -24,6 +24,7 @@ public final class SnakeApp extends JFrame {
   private final Board board;
   private final GamePanel gamePanel;
   private final JButton actionButton;
+  private final JTextArea statsArea;
 
   // Recibe GameClock desde Main
   private final GameClock clock;
@@ -40,14 +41,26 @@ public final class SnakeApp extends JFrame {
     // Obtener serpientes directamente del Board
     List<Snake> snakes = board.snakes();
 
-    // GamePanel obtiene serpientes en tiempo real del Board.
-
-    this.gamePanel = new GamePanel(board, () -> snakes);
+    // GamePanel debe pintar la lista viva en cada repaint
+    // Evita que serpientes muertas queden congeladas y respeta el número real de
+    // serpientes
+    this.gamePanel = new GamePanel(board, board::snakes);
     this.actionButton = new JButton("Action");
+
+    // Área de estadísticas visible solo durante pausa
+    this.statsArea = new JTextArea(3, 40);
+    this.statsArea.setEditable(false);
+    this.statsArea.setFont(new Font("Monospaced", Font.BOLD, 12));
+    this.statsArea.setBackground(new Color(255, 255, 200));
+    this.statsArea.setVisible(false);
+
+    JPanel bottomPanel = new JPanel(new BorderLayout());
+    bottomPanel.add(actionButton, BorderLayout.NORTH);
+    bottomPanel.add(statsArea, BorderLayout.CENTER);
 
     setLayout(new BorderLayout());
     add(gamePanel, BorderLayout.CENTER);
-    add(actionButton, BorderLayout.SOUTH);
+    add(bottomPanel, BorderLayout.SOUTH);
 
     setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
     pack();
@@ -135,15 +148,50 @@ public final class SnakeApp extends JFrame {
     setVisible(true);
   }
 
-  // togglePause para usar GameState
-  // Pause afecta a GameState, que sincroniza con todas las serpientes.
+  // togglePause con coordinación para evitar tearing
   private void togglePause() {
     if ("Action".equals(actionButton.getText())) {
       actionButton.setText("Resume");
       gameState.pause();
+
+      // da tiempo para que todos lleguen a awaitIfPaused()
+      try {
+        Thread.sleep(100);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+      }
+
+      // Snapshot consistente del tablero
+      Board.Stats stats = board.getStats();
+
+      StringBuilder sb = new StringBuilder();
+      sb.append("🐍 Vivas: ").append(stats.aliveCount())
+          .append(" | 💀 Muertas: ").append(stats.deadCount())
+          .append(" | ⚔️ Choques: ").append(stats.collisionCount()).append("\n");
+
+      if (stats.longestAlive() != null) {
+        int idx = board.snakes().indexOf(stats.longestAlive());
+        int len = stats.longestAlive().snapshot().size();
+        sb.append("Serpiente viva más larga: #").append(idx)
+            .append(" (longitud: ").append(len).append(")\n");
+      } else {
+        sb.append("Serpiente viva más larga: Ninguna\n");
+      }
+
+      if (stats.firstDead() != null) {
+        sb.append("Peor serpiente (primera en morir): #")
+            .append(stats.firstDead().snakeIndex())
+            .append(" (longitud: ").append(stats.firstDead().length()).append(")\n");
+      } else {
+        sb.append("Peor serpiente: Ninguna ha muerto aún\n");
+      }
+
+      statsArea.setText(sb.toString());
+      statsArea.setVisible(true);
     } else {
       actionButton.setText("Action");
       gameState.resume();
+      statsArea.setVisible(false);
     }
   }
 
