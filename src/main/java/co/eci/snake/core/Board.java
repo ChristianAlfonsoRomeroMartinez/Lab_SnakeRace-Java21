@@ -8,6 +8,8 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.time.Instant;
 
 public final class Board {
   private final int width;
@@ -15,6 +17,11 @@ public final class Board {
 
   // CopyOnWriteArrayList para serpientes
   private final List<Snake> snakes = new CopyOnWriteArrayList<>();
+
+  // Registro de muertes y colisiones entre serpientes
+  private final List<DeadSnake> deadSnakes = new CopyOnWriteArrayList<>();
+  private final AtomicInteger deathCounter = new AtomicInteger(0);
+  private final AtomicInteger collisionCounter = new AtomicInteger(0);
 
   // Lock separado solo para items. NO usar synchronized en todo Board
   private final Object itemsLock = new Object();
@@ -25,8 +32,14 @@ public final class Board {
   private final Map<Position, Position> teleports = new HashMap<>();
 
   public enum MoveResult {
-    MOVED, ATE_MOUSE, HIT_OBSTACLE, ATE_TURBO, TELEPORTED
+    MOVED, ATE_MOUSE, HIT_OBSTACLE, ATE_TURBO, TELEPORTED, DEAD_BY_OTHER, DEAD_BY_SELF
   }
+
+  // REQ-UI: Registro inmutable de muerte (thread-safe por diseño)
+  public record DeadSnake(Snake snake, int length, int deathOrder, Instant deathTime, int snakeIndex) {}
+
+  // REQ-UI: Snapshot inmutable de estadísticas para evitar tearing
+  public record Stats(int aliveCount, int deadCount, int collisionCount, Snake longestAlive, DeadSnake firstDead) {}
 
   public Board(int width, int height) {
     if (width <= 0 || height <= 0)
@@ -50,7 +63,7 @@ public final class Board {
     return height;
   }
 
-  //  Sincronización mínima en getters de UI
+  // Sincronización mínima en getters de UI
 
   public Set<Position> mice() {
     synchronized (itemsLock) {
@@ -83,6 +96,28 @@ public final class Board {
     var head = snake.head();
     var dir = snake.direction();
     Position next = new Position(head.x() + dir.dx, head.y() + dir.dy).wrap(width, height);
+
+    // Detectar colisiones ANTES del movimiento
+
+    for (Snake other : snakes) {
+      var body = other.snapshot(); // ReadLock en Snake
+      if (other == snake) {
+        boolean first = true;
+        for (Position p : body) {
+          if (first) {
+            first = false; // saltar la cabeza actual
+            continue;
+          }
+          if (p.equals(next)) {
+            return MoveResult.DEAD_BY_SELF;
+          }
+        }
+      } else {
+        if (body.contains(next)) {
+          return MoveResult.DEAD_BY_OTHER;
+        }
+      }
+    }
 
     // Variables para decisiones (calculadas dentro del lock)
     boolean hitObstacle;
@@ -162,5 +197,40 @@ public final class Board {
 
   public List<Snake> snakes() {
     return List.copyOf(snakes); // Retorna vista inmutable adicional por seguridad
+  }
+
+  //  Registrar muerte y retirar serpiente del tablero
+  public void killSnake(Snake snake, boolean collidedWithOther) {
+    Objects.requireNonNull(snake, "snake cannot be null");
+    int order = deathCounter.incrementAndGet();
+    if (collidedWithOther) {
+      collisionCounter.incrementAndGet();
+    }
+    int length = snake.snapshot().size();
+    int indexAtDeath = snakes.indexOf(snake);
+    deadSnakes.add(new DeadSnake(snake, length, order, Instant.now(), indexAtDeath));
+    snakes.remove(snake); // al remover, la UI deja de dibujarla
+  }
+
+  // REQ-UI: Snapshot consistente para UI (sin tearing)
+  public Stats getStats() {
+    Snake longestAlive = null;
+    int maxLen = 0;
+    for (Snake s : snakes) {
+      int len = s.snapshot().size();
+      if (len > maxLen) {
+        maxLen = len;
+        longestAlive = s;
+      }
+    }
+
+    DeadSnake firstDead = null;
+    for (DeadSnake ds : deadSnakes) {
+      if (firstDead == null || ds.deathOrder() < firstDead.deathOrder()) {
+        firstDead = ds;
+      }
+    }
+
+    return new Stats(snakes.size(), deadSnakes.size(), collisionCounter.get(), longestAlive, firstDead);
   }
 }
