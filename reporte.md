@@ -118,3 +118,16 @@ La GUI puede ver el tablero mientras se modifica, por lo que puede tomar datos i
 - **Solucion**
 WRITE lock bloquea todas las lecturas durante la modificación. 
 Región crítica: operaciones (addFirst, quitar, remover). Solo bloqueamos durante la modificación del Deque, NO durante el cálculo de newHead o la lógica de negocio.
+
+## 3) Control de ejecución seguro (UI) 
+
+- **Pausa sin tearing**: En la UI se pausa primero y se espera brevemente (100 ms) para que todos los hilos alcancen awaitIfPaused() asi los datos tomados no estan a medias.
+
+- **Snapshot inmutable**: Agrege un Stats record inmutable en Board con el estado completo (vivas, muertas, choques, serpiente viva más larga y primera muerta). La UI consume ese snapshot para mantener consistencia visual.
+
+- **Conteo de choques y eliminación**: Al detectar colisión con otra serpiente se incrementa un contador  y se registra la muerte, La serpiente se elimina del tablero y su hilo termina, evitando que quede congelada en pantalla.
+
+- **Render dinámico de serpientes**: GamePanel obtiene la lista viva desde board::snakes en cada repaint. Esto respeta el número correcto de serpientes creadas y elimina inmediatamente las muertas de la vista.
+
+
+- **Posiciones iniciales sin colisión**: En Main añadi un generador de posiciones findFreeStart para no generar muertes inmediatas al inicio por solapamiento.
