@@ -4,12 +4,16 @@ import co.eci.snake.concurrency.SnakeRunner;
 import co.eci.snake.core.Board;
 import co.eci.snake.core.Direction;
 import co.eci.snake.core.GameState;
+import co.eci.snake.core.Position;
 import co.eci.snake.core.Snake;
 import co.eci.snake.core.engine.GameClock;
 import co.eci.snake.ui.legacy.SnakeApp;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ThreadLocalRandom;
 
 public final class Main {
   private Main() {
@@ -36,10 +40,14 @@ public final class Main {
     List<Thread> snakeThreads = new ArrayList<>();
 
     // Crear cada serpiente con su SnakeRunner (hilo virtual)
+    // Evitar colisiones en el instante de creación
+    Set<Position> occupied = new HashSet<>();
     for (int i = 0; i < numSnakes; i++) {
-      // Posición inicial diferente para cada serpiente (evita colisiones iniciales)
-      int x = (width / (numSnakes + 1)) * (i + 1);
-      int y = height / 2;
+      // Posición inicial libre
+      Position start = findFreeStart(board, occupied);
+      occupied.add(start);
+      int x = start.x();
+      int y = start.y();
       Direction initialDir = Direction.RIGHT;
 
       // Snake.of() es el factory method público para crear serpientes.
@@ -94,5 +102,31 @@ public final class Main {
     }
 
     return numSnakes;
+  }
+
+  // Buscar posición libre al crear serpientes
+
+  private static Position findFreeStart(Board board, Set<Position> occupied) {
+    var rnd = ThreadLocalRandom.current();
+    int width = board.width();
+    int height = board.height();
+    int guard = 0;
+    while (guard++ < width * height * 2) {
+      Position p = new Position(rnd.nextInt(width), rnd.nextInt(height));
+      if (occupied.contains(p))
+        continue;
+      if (board.mice().contains(p))
+        continue;
+      if (board.obstacles().contains(p))
+        continue;
+      if (board.turbo().contains(p))
+        continue;
+      if (board.teleports().containsKey(p))
+        continue;
+      return p;
+    }
+    // Fallback: si no encuentra, usar (0,0) pero respetar occupied
+    Position fallback = new Position(0, 0);
+    return occupied.contains(fallback) ? new Position(1, 1) : fallback;
   }
 }
