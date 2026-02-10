@@ -1,8 +1,8 @@
 package co.eci.snake.ui.legacy;
 
-import co.eci.snake.concurrency.SnakeRunner;
 import co.eci.snake.core.Board;
 import co.eci.snake.core.Direction;
+import co.eci.snake.core.GameState;
 import co.eci.snake.core.Position;
 import co.eci.snake.core.Snake;
 import co.eci.snake.core.engine.GameClock;
@@ -12,43 +12,64 @@ import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.Executors;
 
 public final class SnakeApp extends JFrame {
 
+  // Recibir GameState desde Main
+  // GameState es el monitor compartido para pausa
+  // Es la misma instancia que usan los SnakeRunner para sincronización correcta.
+  private final GameState gameState;
+
+  // Recibe Board desde Main
   private final Board board;
   private final GamePanel gamePanel;
   private final JButton actionButton;
+  private final JTextArea statsArea;
+
+  // Recibe GameClock desde Main
   private final GameClock clock;
-  private final java.util.List<Snake> snakes = new java.util.ArrayList<>();
 
-  public SnakeApp() {
+  // Lista de serpientes se obtiene del Board
+
+  public SnakeApp(GameState gameState, Board board) {
     super("The Snake Race");
-    this.board = new Board(35, 28);
 
-    int N = Integer.getInteger("snakes", 2);
-    for (int i = 0; i < N; i++) {
-      int x = 2 + (i * 3) % board.width();
-      int y = 2 + (i * 2) % board.height();
-      var dir = Direction.values()[i % Direction.values().length];
-      snakes.add(Snake.of(x, y, dir));
-    }
+    // Guardar referencias a dependencias
+    this.gameState = gameState;
+    this.board = board;
 
-    this.gamePanel = new GamePanel(board, () -> snakes);
+    // Obtener serpientes directamente del Board
+    List<Snake> snakes = board.snakes();
+
+    // GamePanel debe pintar la lista viva en cada repaint
+    // Evita que serpientes muertas queden congeladas y respeta el número real de
+    // serpientes
+    this.gamePanel = new GamePanel(board, board::snakes);
     this.actionButton = new JButton("Action");
+
+    // Área de estadísticas visible solo durante pausa
+    this.statsArea = new JTextArea(3, 40);
+    this.statsArea.setEditable(false);
+    this.statsArea.setFont(new Font("Monospaced", Font.BOLD, 12));
+    this.statsArea.setBackground(new Color(255, 255, 200));
+    this.statsArea.setVisible(false);
+
+    JPanel bottomPanel = new JPanel(new BorderLayout());
+    bottomPanel.add(actionButton, BorderLayout.NORTH);
+    bottomPanel.add(statsArea, BorderLayout.CENTER);
 
     setLayout(new BorderLayout());
     add(gamePanel, BorderLayout.CENTER);
-    add(actionButton, BorderLayout.SOUTH);
+    add(bottomPanel, BorderLayout.SOUTH);
 
     setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
     pack();
     setLocationRelativeTo(null);
 
-    this.clock = new GameClock(60, () -> SwingUtilities.invokeLater(gamePanel::repaint));
-
-    var exec = Executors.newVirtualThreadPerTaskExecutor();
-    snakes.forEach(s -> exec.submit(new SnakeRunner(s, board)));
+    // Crear GameClock con tick que redibuja el panel
+    // gamePanel solo existe dentro de SnakeApp.
+    this.clock = new GameClock(16, () -> SwingUtilities.invokeLater(gamePanel::repaint), gameState);
+    clock.start();
 
     actionButton.addActionListener((ActionEvent e) -> togglePause());
 
@@ -125,16 +146,52 @@ public final class SnakeApp extends JFrame {
     }
 
     setVisible(true);
-    clock.start();
   }
 
+  // togglePause con coordinación para evitar tearing
   private void togglePause() {
     if ("Action".equals(actionButton.getText())) {
       actionButton.setText("Resume");
-      clock.pause();
+      gameState.pause();
+
+      // da tiempo para que todos lleguen a awaitIfPaused()
+      try {
+        Thread.sleep(100);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+      }
+
+      // Snapshot consistente del tablero
+      Board.Stats stats = board.getStats();
+
+      StringBuilder sb = new StringBuilder();
+      sb.append("🐍 Vivas: ").append(stats.aliveCount())
+          .append(" | 💀 Muertas: ").append(stats.deadCount())
+          .append(" | ⚔️ Choques: ").append(stats.collisionCount()).append("\n");
+
+      if (stats.longestAlive() != null) {
+        int idx = board.snakes().indexOf(stats.longestAlive());
+        int len = stats.longestAlive().snapshot().size();
+        sb.append("Serpiente viva más larga: #").append(idx)
+            .append(" (longitud: ").append(len).append(")\n");
+      } else {
+        sb.append("Serpiente viva más larga: Ninguna\n");
+      }
+
+      if (stats.firstDead() != null) {
+        sb.append("Peor serpiente (primera en morir): #")
+            .append(stats.firstDead().snakeIndex())
+            .append(" (longitud: ").append(stats.firstDead().length()).append(")\n");
+      } else {
+        sb.append("Peor serpiente: Ninguna ha muerto aún\n");
+      }
+
+      statsArea.setText(sb.toString());
+      statsArea.setVisible(true);
     } else {
       actionButton.setText("Action");
-      clock.resume();
+      gameState.resume();
+      statsArea.setVisible(false);
     }
   }
 
@@ -230,7 +287,9 @@ public final class SnakeApp extends JFrame {
     }
   }
 
-  public static void launch() {
-    SwingUtilities.invokeLater(SnakeApp::new);
+  public static void launch(GameState gameState, Board board) {
+    SwingUtilities.invokeLater(() -> {
+      new SnakeApp(gameState, board);
+    });
   }
 }

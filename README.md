@@ -148,3 +148,14 @@ Incluye compilación y ejecución de pruebas JUnit. Si tienes análisis estátic
 Este laboratorio es una adaptación modernizada del ejercicio **SnakeRace** de ARSW. El enunciado de actividades se conserva para mantener los objetivos pedagógicos del curso.
 
 **Base construida por el Ing. Javier Toquica.**
+
+
+# Solucion
+
+## Parte 1
+
+En el siguiente link esta el ropositorio modificado correspondiente al punto 1, en su readme se encuentra la docuemntacion del ejercicio
+https://github.com/ChristianAlfonsoRomeroMartinez/wait-notify-excercise
+
+## Parte 2
+[Reporte de laboratirio](reporte.md)
